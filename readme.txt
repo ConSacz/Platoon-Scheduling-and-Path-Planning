@@ -1,13 +1,14 @@
-Path-planning and Scheduling optimization using GA version 19
+Path-planning and Scheduling optimization using GA version 3
 
--Map: 1 source (A) 0 hub 2 destination (B, C) 
+-Map: 2 source (0, 1) 2 hub (2, 3) 2 destination (4, 5) 
 
 -Problem: 
-+ N trucks arrives at A in random time windows, assigned to travel to B or C.
++ N trucks arrives at 0 or 1 in random time windows, assigned to travel to 4 or 5.
 + Trucks can decide to depart right after arrive, or wait for other to form platoon
++ When arrive hubs trucks can wait for other to form platoon
 
 -Optimization variable: (truck routes, truck depart time)
 
 -Fitness functions: 
 + total fuel: depends on platoon and distance travel
-+ total wait time: wait time at A
++ total wait time: wait time at 0, 1, 2, 3
