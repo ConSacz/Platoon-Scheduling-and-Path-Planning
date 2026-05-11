@@ -1,5 +1,7 @@
 from utils.fitness_functions import fitness
 import random
+import numpy as np
+
 # ======================
 # GA OPERATORS
 # ======================
@@ -31,6 +33,8 @@ def crossover(p1, p2):
         "route_HD": p1["route_HD"][:point] + p2["route_HD"][point:],
         "wait_S": p1["wait_S"][:point] + p2["wait_S"][point:],
         "wait_H": p1["wait_H"][:point] + p2["wait_H"][point:],
+        "prior_S": p1["prior_S"],
+        "prior_H": p1["prior_H"],
     }
 
     c2 = {
@@ -38,6 +42,8 @@ def crossover(p1, p2):
         "route_HD": p2["route_HD"][:point] + p1["route_HD"][point:],
         "wait_S": p2["wait_S"][:point] + p1["wait_S"][point:],
         "wait_H": p2["wait_H"][:point] + p1["wait_H"][point:],
+        "prior_S": p2["prior_S"],
+        "prior_H": p2["prior_H"],
     }
 
     return c1, c2
@@ -57,5 +63,8 @@ def mutate(ind, init, paths_SH, paths_HD):
         if random.random() < MUT_RATE:
             ind["wait_S"][i] = random.randint(0,3)
             ind["wait_H"][i] = random.randint(0,3)
-
+        
+    if random.random() < MUT_RATE:
+        ind["prior_S"] = np.random.permutation(N).tolist()
+        ind["prior_H"] = np.random.permutation(N).tolist()       
     return ind

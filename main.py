@@ -1,218 +1,157 @@
-# try:
-#     from IPython import get_ipython
-#     get_ipython().run_line_magic('reset', '-f')
-# except:
-#     pass
+try:
+    from IPython import get_ipython
+    get_ipython().run_line_magic('reset', '-f')
+except:
+    pass
 # %%
+import networkx as nx
 import random
 import numpy as np
+
+from utils.GA_functions import crossover, mutate, selection_etilist
+from utils.fitness_functions import fitness
 
 # ======================
 # %%PARAMETERS
 # ======================
 
-N = 20
-POP_SIZE = 1000
+N = 100
+POP_SIZE = 200
 NUM_GEN = 250
-CROSS_RATE = 0.8
-MUT_RATE = 0.2
 
 TIME_WINDOW = (0, 24)
-ARRIVAL_TIMES = np.random.randint(0, 18, N)
+ARRIVAL_TIMES = np.random.randint(0, 12, N)
 
+S = [0,1]
+H = [2,3]
+D = [4,5]
+
+init_start = [random.randint(0,1) for _ in range(N)]   # chọn S1 hoặc S2
+init_hub  = [random.randint(2,3) for _ in range(N)]   # chọn H1 hoặc H2
+init_dest  = [random.randint(4,5) for _ in range(N)]   # chọn D1 hoặc D2
+init = list(zip(init_start, init_hub, init_dest))
+
+del init_start, init_hub, init_dest
 # ======================
 # %%GRAPH
 # ======================
-
 def create_graph():
-    A = 0
-    B = 8
-    C = 9
+    G = nx.Graph()
 
-    # 5 paths to B
-    paths_to_B = [
-        [0,1,8],
-        [0,2,8],
-        [0,3,8],
-    ]
-    # 5 paths to C
-    paths_to_C = [
-        [0,4,9],
-        [0,5,9],
-        [0,6,9],
-    ]
+    # node layout
+    # 0,1: start
+    # 2,3: hub
+    # 4,5: destination
+    # 6-11: intermediate
+    G.add_nodes_from(range(22))
 
-    return A, B, C, paths_to_B, paths_to_C
+    # paths S -> H
+    paths_SH = {
+        (0,2): [[0,6,2], [0,7,2]],
+        (0,3): [[0,10,3], [0,11,3]],
+        (1,2): [[1,18,2], [1,19,2]],
+        (1,3): [[1,14,3], [1,15,3]]
+    }
+
+    # paths H -> D
+    paths_HD = {
+        (2,4): [[2,8,4], [2,9,4]],
+        (2,5): [[2,12,5], [2,13,5]],
+        (3,4): [[3,20,4], [3,21,4]],
+        (3,5): [[3,16,5], [3,17,5]]
+    }
+
+    def add_paths_with_fixed_weights():
+        edge_weights = {
+            # S -> H
+            (0,6): 1.0, (6,2): 1.0,
+            (0,7): 2.0, (7,2): 1.0,
+            (0,10): 2.0, (10,3): 1.0,
+            (0,11): 2.0, (11,3): 2.0,
     
+            (1,18): 2.0, (18,2): 1.0,
+            (1,19): 3.0, (19,2): 1.0,
+            (1,14): 1.0, (14,3): 1.0,
+            (1,15): 2.0, (15,3): 1.0,
+    
+            # H -> D
+            (2,8): 2.0, (8,4): 1.0,
+            (2,9): 2.0, (9,4): 2.0,
+            (2,12): 2.0, (12,5): 2.0,
+            (2,13): 2.0, (13,5): 3.0,
+    
+            (3,20): 2.0, (20,4): 2.0,
+            (3,21): 3.0, (21,4): 2.0,
+            (3,16): 2.0, (16,5): 1.0,
+            (3,17): 2.0, (17,5): 2.0
+        }
+    
+        for (u, v), w in edge_weights.items():
+            G.add_edge(u, v, weight=w)
+    add_paths_with_fixed_weights()
+    return G, S, H, D, paths_SH, paths_HD
 # ======================
 # %%INIT
 # ======================
+def init_individual(paths_SH, paths_HD):
 
-def init_individual(paths_to_B, paths_to_C, DESTINATIONS):
-    route_gene = []
+    route_SH_gene = []
+    route_HD_gene = []
 
     for i in range(N):
-        if DESTINATIONS[i] == 'B':
-            route_gene.append(random.randint(0, len(paths_to_B)-1))
-        else:
-            route_gene.append(random.randint(0, len(paths_to_C)-1))
+        s = init[i][0]
+        h = init[i][1]
+        d = init[i][2]
 
+        route_SH_gene.append(random.randint(0, len(paths_SH[(s,h)])-1))
+        route_HD_gene.append(random.randint(0, len(paths_HD[(h,d)])-1))
+
+        prior_S = np.random.permutation(N).tolist()
+        prior_H = np.random.permutation(N).tolist()
     return {
-        "route_gene": route_gene,
-        "depart_gene": [
-            random.randint(max(ARRIVAL_TIMES[i], TIME_WINDOW[0]), TIME_WINDOW[1])
-            for i in range(N)
-        ]
+        "route_SH": route_SH_gene,
+        "route_HD": route_HD_gene,
+        "wait_S": [random.randint(0,3)for i in range(N)],
+        "wait_H": [random.randint(0,3)for i in range(N)],
+        "prior_S": prior_S,
+        "prior_H": prior_H
     }
-
-def init_population(paths_to_B, paths_to_C, DESTINATIONS):
-    return [init_individual(paths_to_B, paths_to_C, DESTINATIONS) for _ in range(POP_SIZE)]
-
-# ======================
-# DECODE
-# ======================
-
-def decode(individual, paths_to_B, paths_to_C, DESTINATIONS):
-    routes = []
-    for i in range(N):
-        idx = individual["route_gene"][i]
-        if DESTINATIONS[i] == 'B':
-            routes.append(paths_to_B[idx])
-        elif DESTINATIONS[i] == 'C':
-            routes.append(paths_to_C[idx])
-    return routes
-
-# ======================
-# PLATOON DETECTION
-# ======================
-
-def get_platoons(routes, depart_times):
-    platoon_dict = {}
-
-    for i in range(N):
-        key = (tuple(routes[i]), depart_times[i])
-
-        if key not in platoon_dict:
-            platoon_dict[key] = []
-
-        platoon_dict[key].append(i)
-
-    return platoon_dict
-
-# ======================
-# %%FITNESS
-# ======================
-
-def compute_fuel(route, platoon_size):
-    dist = len(route)
-    reduction = 1 - 0.1 * (platoon_size - 1)
-    return dist * reduction
-
-def fitness(individual, paths_to_B, paths_to_C, DESTINATIONS):
-    routes = decode(individual, paths_to_B, paths_to_C, DESTINATIONS)
-    depart_times = individual["depart_gene"]
-    platoons = get_platoons(routes, depart_times)
-
-    total_fuel = 0
-    total_wait = 0
-    platoon_size = {}
-    for group in platoons.values():
-        size = len(group)
-        for i in group:
-            platoon_size[i] = size
-
-    for i in range(N):
-        route = routes[i]
-        depart = depart_times[i]
-        size = platoon_size.get(i, 1)
-
-        total_fuel += compute_fuel(route, size)
-        total_wait += max(0, depart - ARRIVAL_TIMES[i])
-
-    return 0.7 * total_fuel + 0.3 * total_wait
-
-# ======================
-# %%GA OPERATORS
-# ======================
-
-def selection(pop, paths_to_B, paths_to_C, DESTINATIONS):
-    # sort population theo fitness tăng dần (min tốt hơn)
-    sorted_pop = sorted(
-        pop,
-        key=lambda ind: fitness(ind, paths_to_B, paths_to_C, DESTINATIONS)
-    )
-    return sorted_pop[:POP_SIZE]
-
-def crossover(p1, p2):
-    point = random.randint(0, N-1)
-
-    c1 = {
-        "route_gene": p1["route_gene"][:point] + p2["route_gene"][point:],
-        "depart_gene": p1["depart_gene"][:point] + p2["depart_gene"][point:]
-    }
-
-    c2 = {
-        "route_gene": p2["route_gene"][:point] + p1["route_gene"][point:],
-        "depart_gene": p2["depart_gene"][:point] + p1["depart_gene"][point:]
-    }
-
-    return c1, c2
-
-def mutate(ind, paths_to_B, paths_to_C, DESTINATIONS):
-    for i in range(N):
-        if random.random() < MUT_RATE:
-            if DESTINATIONS[i] == 'B':
-                ind["route_gene"][i] = random.randint(0, len(paths_to_B)-1)
-            else:
-                ind["route_gene"][i] = random.randint(0, len(paths_to_C)-1)
-
-        if random.random() < MUT_RATE:
-            ind["depart_gene"][i] = random.randint(
-                max(ARRIVAL_TIMES[i], TIME_WINDOW[0]),
-                TIME_WINDOW[1]
-            )
-
-    return ind
-
 # ======================
 # %%MAIN (GA LOOP HERE)
 # ======================
 
-if __name__ == "__main__":
-    A, B, C, paths_to_B, paths_to_C = create_graph()
+G, S, H, D, paths_SH, paths_HD = create_graph()
 
-    DESTINATIONS = np.random.choice(['B', 'C'], size=N)
+# ---- init pop ----
+pop = [init_individual(paths_SH, paths_HD) for _ in range(POP_SIZE)]
 
-    # ---- init pop ----
-    pop = [init_individual(paths_to_B, paths_to_C, DESTINATIONS) for _ in range(POP_SIZE)]
+best = None
 
-    best = None
+for gen in range(NUM_GEN):
 
-    for gen in range(NUM_GEN):
+    # ---- selection ----
+    
 
-        # ---- selection ----
-        pop = selection(pop, paths_to_B, paths_to_C, DESTINATIONS)
+    # ---- crossover + mutation ----
+    next_pop = []
+    for i in range(0, POP_SIZE):
+        k = np.random.randint(0,N-1)
+        p1, p2 = pop[i], pop[k]
 
-        # ---- crossover + mutation ----
-        next_pop = []
-        for i in range(0, POP_SIZE):
-            k = np.random.randint(0,N-1)
-            p1, p2 = pop[i], pop[k]
+        c1, c2 = crossover(p1, p2)
+        next_pop.append(mutate(c1, init, paths_SH, paths_HD))
+        next_pop.append(mutate(c2, init, paths_SH, paths_HD))
 
-            c1, c2 = crossover(p1, p2)
-            next_pop.append(mutate(c1, paths_to_B, paths_to_C, DESTINATIONS))
-            next_pop.append(mutate(c2, paths_to_B, paths_to_C, DESTINATIONS))
+    pop = next_pop
+    pop = selection_etilist(pop, init, ARRIVAL_TIMES, paths_SH, paths_HD, G)
+    
+    # ---- evaluation ----
+    current_best = min(pop, key=lambda ind: fitness(ind, init, ARRIVAL_TIMES, paths_SH, paths_HD, G))
 
-        pop = next_pop
+    if best is None or fitness(current_best, init, ARRIVAL_TIMES, paths_SH, paths_HD, G) < fitness(best, init, ARRIVAL_TIMES, paths_SH, paths_HD, G):
+        best = current_best
+    del current_best, next_pop, c1, c2, p1, p2, k, i
+    print(f"Gen {gen}: {fitness(best, init, ARRIVAL_TIMES, paths_SH, paths_HD, G):.3f}")
 
-        # ---- evaluation ----
-        current_best = min(pop, key=lambda ind: fitness(ind, paths_to_B, paths_to_C, DESTINATIONS))
-
-        if best is None or fitness(current_best, paths_to_B, paths_to_C, DESTINATIONS) < fitness(best, paths_to_B, paths_to_C, DESTINATIONS):
-            best = current_best
-
-        print(f"Gen {gen}: {fitness(best, paths_to_B, paths_to_C, DESTINATIONS):.3f}")
-
-    print("Destinations:", DESTINATIONS)
-    print("Best individual:", best)
-    # print("Decoded routes:", decode(best, paths_to_B, paths_to_C, DESTINATIONS))
+# print("Best individual:", best)
+# print("Decoded routes:", decode(best, paths_to_B, paths_to_C, DESTINATIONS))

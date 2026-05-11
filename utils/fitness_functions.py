@@ -18,55 +18,59 @@ def fitness(ind, init, ARRIVAL_TIMES, paths_SH, paths_HD, G):
     routes, times_SH, times_HD = decode(ind, init, paths_SH, paths_HD, G)
     S_depart_times = ind["wait_S"] + ARRIVAL_TIMES
     H_depart_times = S_depart_times + times_SH + ind["wait_H"]
-    start_dict, hub_dict = get_platoons(routes, S_depart_times, H_depart_times)
+    start_dict, hub_dict = get_platoons(routes, S_depart_times, H_depart_times, ind["prior_S"], ind["prior_H"])
     
-    # %%
-    fuel_g = 0
-    total_wait = 0
-
-    # platoon size
-    platoon_size_S = {}
-    platoon_size_H = {}
-
+    # %% POSITION INFO
+    platoon_info_S = {}
+    platoon_info_H = {}
+    
     for group in start_dict.values():
-        for i in group:
-            platoon_size_S[i] = len(group)
-
+        size = len(group)
+        for pos, veh in enumerate(group):
+            platoon_info_S[veh] = (size, pos)
+    
     for group in hub_dict.values():
-        for i in group:
-            platoon_size_H[i] = len(group)
+        size = len(group)
+        for pos, veh in enumerate(group):
+            platoon_info_H[veh] = (size, pos)
 
+    # %% COST   
+    fuel_cost = 0
+    wait_cost = 0
+    
     for i in range(N):
         route = routes[i]
-
-        size_S = platoon_size_S.get(i, 1)
-        size_H = platoon_size_H.get(i, 1)
-
-        FCF_S = vel * FCF[size_S] if size_S <= 5 else vel * FCF[0]
-        FCF_H = vel * FCF[size_H] if size_H <= 5 else vel * FCF[0]
-
-        split_idx = len(route) // 2
-
-        # ---- fuel (g) ----
-        for u, v in zip(route[:split_idx], route[1:split_idx+1]):
-            fuel_g += G[u][v]["weight"] * FCF_S
-
-        for u, v in zip(route[split_idx:], route[split_idx+1:]):
-            fuel_g += G[u][v]["weight"] * FCF_H
-
-        # ---- waiting time (seconds) ----
-        total_wait += max(0, S_depart_times[i] - ARRIVAL_TIMES[i])
-        total_wait += max(0, H_depart_times[i] - (S_depart_times[i] + times_SH[i]))
-
-    # ======================
-    # convert to $
-    # ======================
-
-    # fuel → $
     
-    fuel_cost = fuel_g / 1000  * gas_price
+        size_S, pos_S = platoon_info_S.get(i, (1,0))
+        size_H, pos_H = platoon_info_H.get(i, (1,0))
+    
+        pos_S = min(pos_S, 4)
+        pos_H = min(pos_H, 4)
+    
+        FCF_S = vel * FCF[pos_S]
+        FCF_H = vel * FCF[pos_H]
+    
+        split_idx = len(route)//2
 
-    # wait → $
-    wait_cost = total_wait * wait_price
+        # S -> H
+        for u,v in zip(route[:split_idx], route[1:split_idx+1]):
+            fuel_cost += (G[u][v]["weight"] * FCF_S)
+
+        # H -> D
+        for u,v in zip(route[split_idx:], route[split_idx+1:]):
+            fuel_cost += (G[u][v]["weight"] * FCF_H)
+
+        # waiting
+        # ------------------------------------------
+    
+        wait_cost += max(0, S_depart_times[i] - ARRIVAL_TIMES[i]) * wait_price
+    
+        wait_cost += max(0, H_depart_times[i] - ( S_depart_times[i] + times_SH[i])) * wait_price
 # %%
-    return 0.7 * fuel_cost + 0.3 * wait_cost
+    return 1 * fuel_cost + 1 * wait_cost
+
+
+
+
+
+

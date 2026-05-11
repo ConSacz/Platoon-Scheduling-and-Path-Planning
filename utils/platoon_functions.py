@@ -30,34 +30,47 @@ def decode(ind, init, paths_SH, paths_HD, G):
 
     return routes, times_SH, times_HD
 
-def get_platoons(routes, S_depart_times, H_depart_times):
+def get_platoons(routes, S_depart_times, H_depart_times, prior_S, prior_H):
     N = len(routes)
-    platoons = []
 
-    # ---- START platoon ----
+    # START PLATOON
     start_dict = {}
     for i in range(N):
-        key = (routes[i][0], routes[i][len(routes[i])//2], S_depart_times[i])
+
+        key = (
+            routes[i][0],
+            routes[i][len(routes[i])//2],
+            S_depart_times[i]
+        )
         start_dict.setdefault(key, []).append(i)
+    # sort
+    for key in start_dict:
+        start_dict[key] = sorted(
+            start_dict[key],
+            key=lambda x: prior_S[x]
+        )
 
-    platoons.extend(start_dict.values())
-
-    # ---- HUB platoon ----
+    # HUB PLATOON
     hub_dict = {}
     for i in range(N):
+
         route = routes[i]
 
-        # hub = node giữa (vì luôn S->H->D)
         hub = route[len(route)//2]
         des = route[-1]
 
-        arrival = H_depart_times[i]
-
-        # làm tròn để gom nhóm (quan trọng!)
-        key = (hub, des, arrival)
+        key = (
+            hub,
+            des,
+            H_depart_times[i]
+        )
 
         hub_dict.setdefault(key, []).append(i)
-
-    platoons.extend(hub_dict.values())
+    # sort
+    for key in hub_dict:
+        hub_dict[key] = sorted(
+            hub_dict[key],
+            key=lambda x: prior_H[x]
+        )
 
     return start_dict, hub_dict
