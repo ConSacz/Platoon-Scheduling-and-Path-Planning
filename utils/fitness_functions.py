@@ -5,11 +5,11 @@ import numpy as np
 # FITNESS
 # ======================
 
-FCF = np.array([240.525, 223.207, 214.926, 209.575, 206.678]) # fuel cost factors
-vel = 60
+FCF = np.array([240.525, 223.207, 214.926, 209.575, 206.678]) # fuel cost factors (g/km)
+vel = 60/2 # (km/h)
 
-gas_price = 1.1144/0.832
-wait_price = 25  # $/hour
+gas_price = 1.1144/750 #($/L : g/L)
+wait_price = 2  # $/hour
 
 def fitness(ind, init, ARRIVAL_TIMES, paths_SH, paths_HD, G):
     # %%
@@ -43,9 +43,15 @@ def fitness(ind, init, ARRIVAL_TIMES, paths_SH, paths_HD, G):
     
         size_S, pos_S = platoon_info_S.get(i, (1,0))
         size_H, pos_H = platoon_info_H.get(i, (1,0))
-    
-        pos_S = min(pos_S, 4)
-        pos_H = min(pos_H, 4)
+        
+        if pos_S<=4:
+            pos_S = pos_S
+        else:
+            pos_S = 0
+        if pos_H<=4:
+            pos_H = pos_H
+        else:
+            pos_H = 0
     
         FCF_S = vel * FCF[pos_S]
         FCF_H = vel * FCF[pos_H]
@@ -67,7 +73,8 @@ def fitness(ind, init, ARRIVAL_TIMES, paths_SH, paths_HD, G):
     
         wait_cost += max(0, H_depart_times[i] - ( S_depart_times[i] + times_SH[i])) * wait_price
 # %%
-    return 1 * fuel_cost + 1 * wait_cost
+    return 1 * fuel_cost * gas_price + 1 * wait_cost
+    # return fuel_cost, wait_cost
 
 
 
