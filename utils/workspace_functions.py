@@ -5,7 +5,7 @@ import pickle
 import numpy as np
 
 #%%
-def save_mat(folder_name, file_name, ARRIVAL_TIMES, init, pop, BestCostIt, best, total_time):
+def save_mat(folder_name, file_name, ARRIVAL_TIMES, init, pop, BestCostIt, best, runtime):
     os.makedirs(folder_name, exist_ok=True)
     savemat(os.path.join(folder_name, file_name), {
         'ARRIVAL_TIME': ARRIVAL_TIMES,
@@ -13,7 +13,7 @@ def save_mat(folder_name, file_name, ARRIVAL_TIMES, init, pop, BestCostIt, best,
         'pop': pop,
         'BestCostIt': BestCostIt,
         'best': best,
-        'runtime': total_time
+        'runtime': runtime
     })
     
 #%%
@@ -27,18 +27,22 @@ def load_mat(folder_name, file_name):
     data = loadmat(file_path, struct_as_record=False, squeeze_me=True)
     
     # Trích xuất các biến cần thiết
+    ARRIVAL_TIMES = data['ARRIVAL_TIME']
+    init = data['init']
     pop = data['pop']
     pop_dicts = [matlab_struct_to_dict(item) for item in pop]
-    stat = data['stat']
-    W = data['W']
-    # RP = data['RP']
+    BestCostIt = data['BestCostIt']
+    best = matlab_struct_to_dict(data['best'])
+    runtime = data['runtime']
     
     # Trả về các biến dưới dạng dictionary
     return {
+        'ARRIVAL_TIMES': ARRIVAL_TIMES,
+        'init': init,
         'pop': pop_dicts,
-        'stat': stat,
-        'W': W,
-        # 'RP': RP
+        'BestCostIt': BestCostIt,
+        'best': best,
+        'runtime': runtime
     }
 
 # %% chuyển từ struct kiểu MATLAB qua dict kiểu Python

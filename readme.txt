@@ -1,4 +1,4 @@
-Path-planning and Scheduling optimization using GA version 3
+Path-planning and Scheduling optimization using GA, PSO, TLBO version 3
 
 -Map: 2 sources (0, 1); 2 hubs (2, 3); 2 destinations (4, 5) 
 

@@ -11,7 +11,7 @@ vel = 60/2 # (km/h)
 gas_price = 1.1144/750 #($/L : g/L)
 wait_price = 2  # $/hour
 
-def fitness(ind, init, ARRIVAL_TIMES, paths_SH, paths_HD, G):
+def sep_fitness(ind, init, ARRIVAL_TIMES, paths_SH, paths_HD, G):
     # %%
     N = len(ind['route_HD'])
     
@@ -60,11 +60,11 @@ def fitness(ind, init, ARRIVAL_TIMES, paths_SH, paths_HD, G):
 
         # S -> H
         for u,v in zip(route[:split_idx], route[1:split_idx+1]):
-            fuel_cost += (G[u][v]["weight"] * FCF_S)
+            fuel_cost += (G[u][v]["weight"] * FCF_S) * gas_price
 
         # H -> D
         for u,v in zip(route[split_idx:], route[split_idx+1:]):
-            fuel_cost += (G[u][v]["weight"] * FCF_H)
+            fuel_cost += (G[u][v]["weight"] * FCF_H) * gas_price
 
         # waiting
         # ------------------------------------------
@@ -72,12 +72,41 @@ def fitness(ind, init, ARRIVAL_TIMES, paths_SH, paths_HD, G):
         wait_cost += max(0, S_depart_times[i] - ARRIVAL_TIMES[i]) * wait_price
     
         wait_cost += max(0, H_depart_times[i] - ( S_depart_times[i] + times_SH[i])) * wait_price
-# %%
-    return 1 * fuel_cost * gas_price + 1 * wait_cost
-    # return fuel_cost, wait_cost
+    # return 1 * fuel_cost + 1 * wait_cost
+    return fuel_cost, wait_cost
 
+def ori_fitness(ind, init, ARRIVAL_TIMES, paths_SH, paths_HD, G):
+    # %%
+    N = len(ind['route_HD'])
+    
+    routes, times_SH, times_HD = decode(ind, init, paths_SH, paths_HD, G)
+    S_depart_times = ind["wait_S"] + ARRIVAL_TIMES
+    H_depart_times = S_depart_times + times_SH + ind["wait_H"]
+    start_dict, hub_dict = get_platoons(routes, S_depart_times, H_depart_times, ind["prior_S"], ind["prior_H"])
 
+    # %% COST   
+    fuel_cost = 0
+    
+    for i in range(N):
+        route = routes[i]
+    
+        FCF_S = vel * FCF[0]
+        FCF_H = vel * FCF[0]
+    
+        split_idx = len(route)//2
 
+        # S -> H
+        for u,v in zip(route[:split_idx], route[1:split_idx+1]):
+            fuel_cost += (G[u][v]["weight"] * FCF_S) * gas_price
 
+        # H -> D
+        for u,v in zip(route[split_idx:], route[split_idx+1:]):
+            fuel_cost += (G[u][v]["weight"] * FCF_H) * gas_price
+    # return 1 * fuel_cost + 1 * wait_cost
+    
+    return fuel_cost
 
+def fitness(ind, init, ARRIVAL_TIMES, paths_SH, paths_HD, G):
+    fuel_cost, wait_cost = sep_fitness(ind, init, ARRIVAL_TIMES, paths_SH, paths_HD, G)
+    return 1 * fuel_cost + 1 * wait_cost
 
