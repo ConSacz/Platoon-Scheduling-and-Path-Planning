@@ -4,6 +4,49 @@ import tarfile
 import pickle
 import numpy as np
 
+import importlib
+
+# %% LOAD MAP 
+CASE_CONFIG = {
+    0: "map Viet Nam",
+    1: "map Europe",
+    2: "map America"
+}
+
+
+def load_locations(case):
+
+    folder = CASE_CONFIG[case]
+
+    # workspace_functions.py nằm trong Project/utils/
+    utils_dir = os.path.dirname(os.path.abspath(__file__))
+
+    # Đi lên Project/
+    project_dir = os.path.dirname(utils_dir)
+
+    # Đường dẫn tới locations.py
+    locations_path = os.path.join(
+        project_dir,
+        "map generation",
+        folder,
+        "locations.py"
+    )
+
+    if not os.path.exists(locations_path):
+        raise FileNotFoundError(
+            f"Không tìm thấy locations.py:\n{locations_path}"
+        )
+
+    spec = importlib.util.spec_from_file_location(
+        f"locations_case_{case}",
+        locations_path
+    )
+
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    return module.locations
+
 #%%
 def save_mat(folder_name, file_name, ARRIVAL_TIMES, init, pop, BestCostIt, best, runtime):
     os.makedirs(folder_name, exist_ok=True)
@@ -28,7 +71,8 @@ def load_mat(folder_name, file_name):
     
     # Trích xuất các biến cần thiết
     ARRIVAL_TIMES = data['ARRIVAL_TIME']
-    init = data['init']
+    init = np.asarray(data['init']).astype(str)
+    init = np.char.strip(init)
     pop = data['pop']
     pop_dicts = [matlab_struct_to_dict(item) for item in pop]
     BestCostIt = data['BestCostIt']

@@ -1,202 +1,138 @@
-try:
-    from IPython import get_ipython
-    get_ipython().run_line_magic('reset', '-f')
-except:
-    pass
+# try:
+#     from IPython import get_ipython
+#     get_ipython().run_line_magic('reset', '-f')
+# except:
+#     pass
 # %%
-import random
 import numpy as np
 import time
+import pickle
 
-from utils.fitness_functions import fitness
-from utils.graph_functions import create_graph
+from map_generation.locations import locations
+from utils.fitness_functions import weighted_fitness
 from utils.workspace_functions import save_mat
-# %%INIT
-def init_individual(paths_SH, paths_HD):
-    prior_S = np.random.permutation(N).tolist()
-    prior_H = np.random.permutation(N).tolist()
-    particle = {
-        "route_SH": [],
-        "route_HD": [],
-        "wait_S": [],
-        "wait_H": [],
+from utils.algorithm_functions import PSO_init_individual, update_particle
 
-        "v_route_SH": [],
-        "v_route_HD": [],
-        "v_wait_S": [],
-        "v_wait_H": [],
-        "prior_S": prior_S,
-        "prior_H": prior_H
-    }
+# FITNESS FUNCTION
+def fitness(ind, init, ARRIVAL_TIMES, N_trans, RouteLibrary):
+    return weighted_fitness(ind, init, ARRIVAL_TIMES, N_trans, RouteLibrary)
 
-    for i in range(N):
-        s,h,d = init[i]
-    
-        particle["route_SH"].append(random.randint(0, len(paths_SH[(s,h)])-1))
-        particle["route_HD"].append(random.randint(0, len(paths_HD[(h,d)])-1))
+# %% MAP GENERATION
 
-        particle["wait_S"].append(random.randint(0,max_wait))
-        particle["wait_H"].append(random.randint(0,max_wait))
+# N_set = [600, 800, 1000]
+#N_set = [60, 80, 100]
+N_set = [100]
+Trial = 1
 
-        particle["v_route_SH"].append(random.uniform(-1,1))
-        particle["v_route_HD"].append(random.uniform(-1,1))
-        particle["v_wait_S"].append(random.uniform(-1,1))
-        particle["v_wait_H"].append(random.uniform(-1,1))
-    return particle
+with open("map_generation/route_library.pkl","rb") as f: 
+    RouteLibrary = pickle.load(f)
 
-# UPDATE PARTICLE
-def update_particle(p, pbest, gbest, paths_SH, paths_HD):
-    for i in range(N):
-        r1 = random.random()
-        r2 = random.random()
-        
-        # route SH
-        v = (
-            W * p["v_route_SH"][i]
-            + C1 * r1 * (pbest["route_SH"][i] - p["route_SH"][i])
-            + C2 * r2 * (gbest["route_SH"][i] - p["route_SH"][i])
-        )
-        p["v_route_SH"][i] = v
-        x = p["route_SH"][i] + v
-        s,h,d = init[i]
-        max_idx = len(paths_SH[(s,h)]) - 1
-        x = int(round(x))
-        x = max(0, min(max_idx, x))
-        p["route_SH"][i] = x
-        
-        # route HD
-        v = (
-            W * p["v_route_HD"][i]
-            + C1 * r1 * (pbest["route_HD"][i] - p["route_HD"][i])
-            + C2 * r2 * (gbest["route_HD"][i] - p["route_HD"][i])
-        )
-        p["v_route_HD"][i] = v
-        x = p["route_HD"][i] + v
-        max_idx = len(paths_HD[(h,d)]) - 1
-        x = int(round(x))
-        x = max(0, min(max_idx, x))
-        p["route_HD"][i] = x
-        
-        # wait S
-        v = (
-            W * p["v_wait_S"][i]
-            + C1 * r1 * (pbest["wait_S"][i] - p["wait_S"][i])
-            + C2 * r2 * (gbest["wait_S"][i] - p["wait_S"][i])
-        )
-        p["v_wait_S"][i] = v
-        x = int(round(p["wait_S"][i] + v))
-        x = max(0, min(3, x))
-        p["wait_S"][i] = x
+N_trans = 3
+route_options = len(next(iter(RouteLibrary.values())))
 
-        # wait H
-        v = (
-            W * p["v_wait_H"][i]
-            + C1 * r1 * (pbest["wait_H"][i] - p["wait_H"][i])
-            + C2 * r2 * (gbest["wait_H"][i] - p["wait_H"][i])
-        )
-        p["v_wait_H"][i] = v
-        x = int(round(p["wait_H"][i] + v))
-        x = max(0, min(3, x))
-        p["wait_H"][i] = x
-        
-# %%PARAMETERS
-N_set = [60, 80, 100]
+# %% MAIN
 for N in N_set:
-    for trial in range(50):
-        # N = 100
-        SWARM_SIZE = 200
-        MaxIt = 250
-        
-        W  = 0.7
+    for trial in range(Trial):
+        np.random.seed(trial)
+
+        POP_SIZE = 200
+        MaxFC = 50000
+        W  = 0.8
         C1 = 1.5
         C2 = 1.5
         
-        TIME_WINDOW = (0,48)
-        ARRIVAL_TIMES = np.random.randint(0,24,N)
-        max_wait = 6
+        max_wait = 4
+
+
+        ORIGINS = [
+            name for name, info in locations.items()
+            if info["type"] == "start"
+        ]
         
-        # %%INIT
-        S = [0,1]
-        H = [2,3]
-        D = [4,5]
+        DESTINATIONS = [
+            name for name, info in locations.items()
+            if info["type"] == "destination"
+        ]
         
-        init_start = [random.randint(0,1) for _ in range(N)]   # chọn S1 hoặc S2
-        init_hub  = [random.randint(2,3) for _ in range(N)]   # chọn H1 hoặc H2
-        init_dest  = [random.randint(4,5) for _ in range(N)]   # chọn D1 hoặc D2
-        init = list(zip(init_start, init_hub, init_dest))
+        origin_idx = np.random.randint(0, len(ORIGINS), N)
+        destination_idx = np.random.randint(0, len(DESTINATIONS), N)
+        ARRIVAL_TIMES = np.random.randint(0, round(N/(len(ORIGINS)*len(DESTINATIONS))/2), N)
         
-        del init_start, init_hub, init_dest
+        init = [
+            (ORIGINS[o], DESTINATIONS[d])
+            for o, d in zip(origin_idx, destination_idx)
+        ]
         
-        BestCostIt = np.zeros(MaxIt)
+        BestCostIt = np.zeros(np.round(MaxFC/POP_SIZE).astype(int)+2)
         
-        G, paths_SH, paths_HD = create_graph()
-        
+        del origin_idx, destination_idx
+        # ---- init pop ----
         pop = [
-            init_individual(paths_SH, paths_HD)
-            for _ in range(SWARM_SIZE)
+            PSO_init_individual(N, route_options, N_trans, max_wait)
+            for _ in range(POP_SIZE)
         ]
         
         # pbest
         pbest = []
         
-        for p in pop:
+        for ind in pop:
             pbest.append({
-                "route_SH": p["route_SH"].copy(),
-                "route_HD": p["route_HD"].copy(),
-                "wait_S": p["wait_S"].copy(),
-                "wait_H": p["wait_H"].copy(),
-                "prior_S": p["prior_S"].copy(),
-                "prior_H": p["prior_H"].copy()
+                "route": ind["route"].copy(),
+                "wait": ind["wait"].copy(),
+                "prior": ind["prior"].copy()
             })
         
         # gbest
         gbest = min(
             pbest,
             key=lambda ind:
-            fitness(ind, init, ARRIVAL_TIMES, paths_SH, paths_HD, G)
+            fitness(ind, init, ARRIVAL_TIMES, N_trans, RouteLibrary)
         )
-        
+        best_fit = fitness(gbest, init, ARRIVAL_TIMES, N_trans, RouteLibrary)
+        BestCostIt[0] = best_fit
+        print(f"Case {N}N, Trial {trial}, Iter 0: {best_fit:.4f}")
         # %% PSO LOOP
-        start_loop = time.time()
-        for it in range(MaxIt):
+        start_time = time.time()
+        FC=0
+        it=0
+        while FC < MaxFC:
+            it+=1
         
-            for idx, p in enumerate(pop):
-                update_particle(p, pbest[idx], gbest, paths_SH, paths_HD)
-                current_fit = fitness( p, init, ARRIVAL_TIMES, paths_SH, paths_HD, G)
-                pbest_fit = fitness( pbest[idx], init, ARRIVAL_TIMES, paths_SH, paths_HD, G)
+            for idx, ind in enumerate(pop):
+                ind = update_particle(ind, pbest[idx], gbest, W, C1, C2, route_options, max_wait)
+                
+                current_fit = fitness(ind, init, ARRIVAL_TIMES, N_trans, RouteLibrary)
+                pbest_fit = fitness(pbest[idx], init, ARRIVAL_TIMES, N_trans, RouteLibrary)
         
                 # update pbest
                 if current_fit < pbest_fit:
                     pbest[idx] = {
-                        "route_SH": p["route_SH"].copy(),
-                        "route_HD": p["route_HD"].copy(),
-                        "wait_S": p["wait_S"].copy(),
-                        "wait_H": p["wait_H"].copy(),
-                        "prior_S": p["prior_S"].copy(),
-                        "prior_H": p["prior_H"].copy()
+                        "route": ind["route"].copy(),
+                        "wait": ind["wait"].copy(),
+                        "prior": ind["prior"].copy()
                     }
-        
+                FC+=1
             # update gbest
             candidate = min(
                 pbest,
                 key=lambda ind:
-                fitness(ind, init, ARRIVAL_TIMES,
-                        paths_SH, paths_HD, G)
+                fitness(ind, init, ARRIVAL_TIMES, N_trans, RouteLibrary)
             )
+            can_fit = fitness(candidate, init, ARRIVAL_TIMES, N_trans, RouteLibrary)
         
-            if (fitness(candidate, init, ARRIVAL_TIMES, paths_SH, paths_HD, G)
-                <
-                fitness(gbest, init, ARRIVAL_TIMES, paths_SH, paths_HD, G)):
+            if can_fit < best_fit:
                 gbest = candidate.copy()
+                best_fit = can_fit
             
-            BestCostIt[it] = fitness(gbest, init, ARRIVAL_TIMES, paths_SH, paths_HD, G)
+            BestCostIt[it] = best_fit = can_fit
             
-            print(f"Case {N}N, Trial {trial}, Iter {it}: fitness(gbest, init, ARRIVAL_TIMES, paths_SH, paths_HD, G):.3f")
-        total_time = (time.time() - start_loop)/60
+            print(f"Case {N}N, Trial {trial}, Iter {it}: {fitness(gbest, init, ARRIVAL_TIMES, N_trans, RouteLibrary):.3f}")
+        total_time = (time.time() - start_time)/60
+        print (f"runtime: {total_time:.4f}min")
         
         folder_name = f'data/case_{N}/PSO'
         file_name = f'PSO_{trial}.mat'
         save_mat(folder_name, file_name, ARRIVAL_TIMES, init, pop, BestCostIt, gbest, total_time)
         
-        del C1, C2, candidate, current_fit, D, H, S, G, idx, it, MaxIt, p, paths_HD, paths_SH, pbest, pbest_fit
-        del start_loop, SWARM_SIZE, TIME_WINDOW, W
+        # del C1, C2, candidate, current_fit, idx, it, MaxIt, ind, pbest, pbest_fit
+        # del start_loop, POP_SIZE, TIME_WINDOW, W

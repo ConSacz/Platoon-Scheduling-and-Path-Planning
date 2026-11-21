@@ -1,0 +1,259 @@
+from utils.fitness_functions import weighted_fitness
+import random
+import numpy as np
+from math import gamma, pi
+import copy
+
+# FITNESS FUNCTION
+def fitness(ind, init, ARRIVAL_TIMES,  N_trans, RouteLibrary):
+    return weighted_fitness(ind, init, ARRIVAL_TIMES,  N_trans, RouteLibrary)
+
+# %% GENERAL FUNCTIONS
+def init_individual(N, route_options, N_trans, max_wait):
+    
+    route = np.random.randint(0, route_options, size=N)
+    wait = np.random.randint(0, max_wait + 1, size=(N_trans - 1, N))
+    prior = np.array([np.random.permutation(N) for _ in range(N_trans - 1)])
+        
+    return {
+        "route": route,
+        "wait": wait,
+        "prior": prior
+    }
+
+# PSO INIT
+def PSO_init_individual(N, route_options, N_trans, max_wait):
+    
+    route = np.random.randint(0, route_options, size=N)
+    wait = np.random.randint(0, max_wait + 1, size=(N_trans - 1, N))
+    prior = np.array([np.random.permutation(N) for _ in range(N_trans - 1)])
+        
+    return {
+        "route": route,
+        "wait": wait,
+        "prior": prior,
+        "v_route": np.random.uniform(-1,1, size=(N)),
+        "v_wait": np.random.uniform(-1,1, size=(N_trans - 1, N))
+    }
+
+def Levy(x, y):
+    beta = 1.5
+    sigma = (
+        gamma(1 + beta)
+        * np.sin(pi * beta / 2)
+        / (
+            gamma((1 + beta) / 2)
+            * beta
+            * 2 ** ((beta - 1) / 2)
+        )
+    ) ** (1 / beta)
+
+    u = np.random.randn(x, y) * sigma
+    v = np.random.randn(x, y)
+    step = u / (np.abs(v) ** (1 / beta))
+    if x == 1:
+        return step.reshape(y,)
+    return step
+
+# COPY
+def copy_ind(ind):
+    return {
+        "route": np.asarray(ind["route"], dtype=float).copy(),
+        "wait": np.asarray(ind["wait"], dtype=float).copy(),
+        "prior": ind["prior"].copy()
+    }
+
+# CLAMP
+def clamp_individual(ind, route_options, max_wait):
+    ind["route"] = np.round(ind["route"]).astype(int)
+    ind["wait"] = np.round(ind["wait"]).astype(int)
+
+    ind["route"] = ind["route"] % route_options
+    ind["wait"] = (ind["wait"]) % (max_wait)
+    
+    return ind
+
+# %%GA FUNCTIONS
+def selection_etilist(pop, init, ARRIVAL_TIMES,  N_trans, RouteLibrary):
+    POP_SIZE = len(pop)
+    # sort population theo fitness tăng dần (min tốt hơn)
+    sorted_pop = sorted(
+        pop,
+        key=lambda ind: fitness(ind, init, ARRIVAL_TIMES,  N_trans, RouteLibrary)
+    )
+    return sorted_pop[:POP_SIZE]
+
+def selection_tournament(pop, init, ARRIVAL_TIMES,  N_trans, RouteLibrary):
+    k = 3
+    new_pop = []
+    for _ in range(len(pop)):
+        candidates = random.sample(pop, k)
+        best = min(candidates, key=lambda ind: fitness(ind, init, ARRIVAL_TIMES, N_trans, RouteLibrary))
+        new_pop.append(best)
+    return new_pop
+
+def crossover(p1, p2):
+    N = len(p1['route'])
+    point = random.randint(0, N-1)
+
+    c1 = {
+        "route": np.concatenate((p1["route"][:point], p2["route"][point:])),
+        "wait": np.concatenate((p1["wait"][:point], p2["wait"][point:])),
+        "prior": p1["prior"],
+    }
+    
+    c2 = {
+        "route": np.concatenate((p2["route"][:point], p1["route"][point:])),
+        "wait": np.concatenate((p2["wait"][:point], p1["wait"][point:])),
+        "prior": p2["prior"],
+    }
+
+    return c1, c2
+
+def mutate(ind, route_options, N_trans, max_wait):
+    N = len(ind['route'])
+    MUT_RATE = 0.2
+
+    if random.random() < MUT_RATE:
+        ind = init_individual(N, route_options, N_trans, max_wait)     
+    return ind
+
+# %% TLBO FUNCTIONS
+# MEAN
+def population_mean(pop, route_options, max_wait):
+    mean_ind = {
+        "route": [],
+        "wait": []
+    }
+    for key in mean_ind.keys():
+        arr = np.array([p[key] for p in pop])
+        mean_ind[key] = np.mean(arr, axis=0)
+        mean_ind = clamp_individual(mean_ind, route_options, max_wait)
+    return mean_ind
+
+# TEACHING PHASE
+def teaching_phase(student, teacher, mean_ind, route_options, max_wait):
+    N = len(student['route'])
+    N_trans = len(student['wait'])
+    TF = np.random.randint(1,2)
+    new_ind = copy_ind(student)
+    # r_route = np.random.rand(N)
+    # r_wait  = np.random.rand(N_trans, N)
+    r_route = np.random.uniform(-1, 1, size=N)
+    r_wait  = np.random.uniform(-1, 1, size=(N_trans, N))
+    # route 
+    new_ind["route"] = student["route"] + (r_route * (teacher["route"] - TF * mean_ind["route"]))
+    # wait
+    new_ind["wait"] = student["wait"] + (r_wait * (teacher["wait"] - TF * mean_ind["wait"]))
+    
+    new_ind = clamp_individual(new_ind, route_options, max_wait)
+    return new_ind
+
+# LEARNER PHASE
+def learner_phase(ind1, ind2, fit1, fit2, route_options, max_wait):
+    N = len(ind1['route'])
+    N_trans = len(ind1['wait'])
+    new_ind = copy_ind(ind1)
+    r_route = np.random.rand(N)
+    r_wait  = np.random.rand(N_trans, N)
+    # r_route = np.random.rand()
+    # r_wait  = np.random.rand()
+    if fit1 < fit2:
+        new_ind["route"] = ind1["route"] + (r_route * (ind1["route"] - ind2["route"]))
+        new_ind["wait"]  = ind1["wait"] + (r_wait * (ind1["wait"] - ind2["wait"]))
+    else:
+        new_ind["route"] = ind1["route"] + (r_route * ( ind2["route"] - ind1["route"]))
+        new_ind["wait"]  = ind1["wait"] + (r_wait * (ind2["wait"] - ind1["wait"]))
+    new_ind = clamp_individual(new_ind, route_options, max_wait)
+    return new_ind
+
+def learner_phase2(ind1, ind2, fit1, fit2, route_options, max_wait):
+    new_ind = copy_ind(ind1)
+    N = len(ind1['route'])
+
+    for i in range(N):
+        if fit1 < fit2:
+            r = np.random.rand()
+            new_ind["route"][i] = ind1["route"][i] + (r * (ind1["route"][i] - ind2["route"][i]))
+            new_ind["wait"][:,i]  = ind1["wait"][:,i] + (r * (ind1["wait"][:,i] - ind2["wait"][:,i]))
+        else:
+            r = np.random.rand()
+            new_ind["route"][i] = ind1["route"][i] + (r * (ind2["route"][i] - ind1["route"][i]))
+            new_ind["wait"][:,i]  = ind1["wait"][:,i] + (r * (ind2["wait"][:,i] - ind1["wait"][:,i]))
+    
+    new_ind = clamp_individual(new_ind, route_options, max_wait)
+    # print("Min:", np.min(new_ind["route"]))
+    return new_ind
+
+# %% PSO FUNCTIONS
+# PSO UPDATE PARTICLE
+def update_particle(ind, pbest, gbest, W, C1, C2, route_options, max_wait):
+    N = len(ind['route'])
+    N_trans = len(ind['wait'])
+    new_ind = ind.copy()
+    r1_route = np.random.rand(N)
+    r1_wait  = np.random.rand(N_trans, N)
+    r2_route = np.random.rand(N)
+    r2_wait  = np.random.rand(N_trans, N)
+    
+    # route 
+    v_route = (W * new_ind["v_route"]
+        + C1 * r1_route * (pbest["route"] - new_ind["route"])
+        + C2 * r2_route * (gbest["route"] - new_ind["route"])
+    )
+    new_ind["v_route"] = v_route
+    new_ind["route"] = new_ind["route"] + v_route
+    
+    # wait
+    v_wait = (
+        W * new_ind["v_wait"]
+        + C1 * r1_wait * (pbest["wait"] - new_ind["wait"])
+        + C2 * r2_wait * (gbest["wait"] - new_ind["wait"])
+    )
+    new_ind["v_wait"] = v_wait
+    new_ind["wait"] = new_ind["wait"] + v_wait
+    
+    new_ind = clamp_individual(new_ind, route_options, max_wait)
+    return new_ind
+    
+# %% FDA FUNCTIONS
+def generate_and_select_best_neighbor(ind, Delta, beta, init, ARRIVAL_TIMES, route_options, N_trans, max_wait, RouteLibrary):
+    """
+    Generate beta neighbors and select the best valid one.
+    
+    Parameters:
+        ind: current solution
+        Delta: perturbation matrix
+        beta: number of neighbors to generate
+
+    Returns:
+        best_neighbor: best valid neighbor found, or None if no valid neighbor
+        best_cost: cost of best neighbor, or float('inf') if no valid neighbor
+    """
+    best_neighbor = None
+    best_cost = float('inf')
+    N = len(ind['route'])
+    for j in range(beta):
+        # Generate candidate neighbor using perturbation
+        new_ind = ind.copy()
+        new_ind["route"] = ind["route"] + np.random.randint(0, route_options, size=N) * Delta["route"]
+        new_ind["wait"] = ind["wait"] + np.random.randint(1, max_wait + 1, size=(N_trans - 1, N)) * Delta["wait"]
+        
+        new_ind = clamp_individual(new_ind, route_options, max_wait)
+        
+        # Check connectivity and evaluate
+        new_ind_cost = fitness(ind, init, ARRIVAL_TIMES,  N_trans, RouteLibrary)
+        
+        # Track best valid neighbor
+        if new_ind_cost < best_cost:
+            best_cost = new_ind_cost
+            best_neighbor = new_ind.copy()
+    
+    return best_neighbor, best_cost
+
+
+
+
+
+
+    

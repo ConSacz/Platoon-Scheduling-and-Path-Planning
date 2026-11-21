@@ -1,76 +1,180 @@
-def decode(ind, init, paths_SH, paths_HD, G):
-    N = len(ind['route_HD'])
-    routes = []
-    times_SH = []
-    times_HD = []
+import numpy as np
+from collections import defaultdict
+# ==========================================================
+# %%Decode route + compute timeline
+# ==========================================================
+
+v = 60
+
+def decode_routes(ind, init, ARRIVAL_TIMES, RouteLibrary):
+
+    N = len(ind["route"])
+
+    vehicles = []
 
     for i in range(N):
-        s = init[i][0]
-        h = init[i][1]
-        d = init[i][2]
 
-        path1 = paths_SH[(s,h)][ind["route_SH"][i]]
-        path2 = paths_HD[(h,d)][ind["route_HD"][i]]
+        # --------------------------------------------------
+        # Route information
+        # --------------------------------------------------
 
-        # tính time đoạn S -> H
-        t1 = 0
-        for u, v in zip(path1[:-1], path1[1:]):
-            t1 += G[u][v]["weight"]
+        origin = init[i][0]
+        destination = init[i][-1]
 
-        # tính time đoạn H -> D
-        t2 = 0
-        for u, v in zip(path2[:-1], path2[1:]):
-            t2 += G[u][v]["weight"]
+        route_id = ind["route"][i]
 
-        full_path = path1 + path2[1:]
+        route = RouteLibrary[(origin, destination)][route_id]
 
-        routes.append(full_path)
-        times_SH.append(t1)
-        times_HD.append(t2)
+        path = route["path"]
+        segments = route["segments"]
+        segment_distance = route["segment_distance"]
 
-    return routes, times_SH, times_HD
+        n_seg = len(segments)
+        n_node = len(path)
 
-def get_platoons(routes, S_depart_times, H_depart_times, prior_S, prior_H):
-    N = len(routes)
+        # --------------------------------------------------
+        # Wait vector
+        # only use first n_seg-1 values
+        # destination has no waiting
+        # --------------------------------------------------
 
-    # START PLATOON
-    start_dict = {}
-    for i in range(N):
+        n_seg = len(segments)
 
-        key = (
-            routes[i][0],
-            routes[i][len(routes[i])//2],
-            S_depart_times[i]
-        )
-        start_dict.setdefault(key, []).append(i)
-    # sort
-    for key in start_dict:
-        start_dict[key] = sorted(
-            start_dict[key],
-            key=lambda x: prior_S[x]
-        )
+        wait = ind["wait"][:n_seg, i]
 
-    # HUB PLATOON
-    hub_dict = {}
-    for i in range(N):
+        # Priority vector
+        priority_order = ind["prior"][:n_seg]
 
-        route = routes[i]
+        # Timeline
+        arrival = np.zeros(n_node)
+        departure = np.zeros(n_node)
+        arrival[0] = ARRIVAL_TIMES[i]
+        if n_node > 1:
+            departure[0] = arrival[0] + wait[0]
+            departure[0] = round(departure[0])
+        else:
+            departure[0] = arrival[0]
 
-        hub = route[len(route)//2]
-        des = route[-1]
+        # Remaining nodes
+        for k in range(1, n_node):
+            arrival[k] = departure[k-1] + segment_distance[k-1]/v
+            if k < n_seg:
+                departure[k] = round(arrival[k] + wait[k])
+            else:
+                departure[k] = arrival[k]
 
-        key = (
-            hub,
-            des,
-            H_depart_times[i]
-        )
+        # Store
+        vehicles.append({
+            "vehicle_id": i,
+            "origin": origin,
+            "destination": destination,
+            "route_id": route_id,
+            "path": path,
+            "segments": segments,
+            "segment_distance": segment_distance,
+            "arrival": arrival,
+            "departure": departure,
+            "wait": wait,
+            "priority_order": priority_order
 
-        hub_dict.setdefault(key, []).append(i)
-    # sort
-    for key in hub_dict:
-        hub_dict[key] = sorted(
-            hub_dict[key],
-            key=lambda x: prior_H[x]
-        )
+        })
 
-    return start_dict, hub_dict
+    return vehicles
+
+# ==========================================================
+# %%Build segment index
+# ==========================================================
+
+def build_segment_index(vehicles):
+
+    segment_index = defaultdict(list)
+
+    for veh in vehicles:
+
+        vehicle_id = veh["vehicle_id"]
+
+        segments = veh["segments"]
+
+        departures = veh["departure"]
+
+        priority_orders = veh["priority_order"]
+
+        distances = veh["segment_distance"]
+
+
+        for k, segment in enumerate(segments):
+
+            segment_index[segment].append({
+
+                "vehicle": vehicle_id,
+
+                "route_idx": k,
+
+                "departure": departures[k],
+
+                "priority_order": priority_orders[k],
+
+                "distance": distances[k]
+
+            })
+
+    return segment_index
+
+# ==========================================================
+# %%Build platoons
+# ==========================================================
+def build_priority_rank(ind, N_trans):
+
+    priority_rank = []
+
+    for k in range(N_trans - 1):
+
+        perm = ind["prior"][k]
+
+        rank = np.empty(len(perm), dtype=int)
+
+        rank[perm] = np.arange(len(perm))
+
+        priority_rank.append(rank)
+
+    return priority_rank
+
+def build_platoons(vehicles, segment_index, priority_rank):
+    platoon_info = {}
+    # Each road segment
+    for segment, records in segment_index.items():
+        # Group by departure time
+        departure_groups = defaultdict(list)
+        for rec in records:
+            departure_groups[rec["departure"]].append(rec)
+        # One platoon for each departure time
+        for departure, group in departure_groups.items():
+
+            if len(group) == 1:
+
+                rec = group[0]
+
+                platoon_info[(rec["vehicle"], rec["route_idx"])] = {
+                    "size": 1,
+                    "position": 0
+                }
+                continue
+
+            # Priority ranking
+            route_idx = group[0]["route_idx"]
+            
+            group.sort(
+                key=lambda x: priority_rank[route_idx][x["vehicle"]]
+            )
+
+            # Save platoon info
+            size = len(group)
+
+            for pos, rec in enumerate(group):
+
+                platoon_info[(rec["vehicle"], rec["route_idx"])] = {
+                    "size": size,
+                    "position": pos
+                }
+
+    return platoon_info
