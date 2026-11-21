@@ -18,9 +18,9 @@ algorithm_configs = {
     'TLBO': 'TLBO'
 }
 case_configs = {
-    'N600': 'case_600',
-    'N800': 'case_800',
-    'N1000': 'case_1000',  
+    '600 trucks': 'case_600',
+    '800 trucks': 'case_800',
+    '1000 trucks': 'case_1000',  
 }
 
 results = {}
@@ -72,14 +72,14 @@ del ARRIVAL_TIMES, final_sep_costs, G, ind, init, paths_HD, paths_SH, sep_fit, o
 # %% scatter 2 fitness
 fig, ax = plt.subplots(figsize=(8, 5))
 markers = {
-    'N600': 'o',
-    'N800': 's',
-    'N1000': '^'
+    '600 trucks': 'o',
+    '800 trucks': 's',
+    '1000 trucks': '^'
 }
 colors = {
-    'N600': 'blue',
-    'N800': 'salmon',
-    'N1000': 'green'
+    '600 trucks': 'blue',
+    '800 trucks': 'salmon',
+    '1000 trucks': 'green'
 }
 for algo in algorithm_configs:
     for idx, case in enumerate(case_configs):
@@ -92,8 +92,8 @@ for algo in algorithm_configs:
     ax.tick_params(axis='both', which='major', labelsize=16)
     ax.grid(True)
     
-ax.set_ylabel('Fuel Cost', fontsize=16)
-ax.set_xlabel('Wait Cost', fontsize=16)
+ax.set_ylabel('Fuel Cost ($)', fontsize=16)
+ax.set_xlabel('Wait Cost ($)', fontsize=16)
 handles, labels = ax.get_legend_handles_labels()
 fig.legend(handles, labels, loc='upper center', ncol=3, bbox_to_anchor=(0.5, 1.07),fontsize=16)
 plt.tight_layout(rect=[0, 0, 1, 0.95])
@@ -140,7 +140,7 @@ for i in range(len(case_configs)):
 
 ax.set_xticks(x)
 ax.set_xticklabels(case_configs)
-ax.set_ylabel('Cost', fontsize=16)
+ax.set_ylabel('Total Cost ($)', fontsize=16)
 ax.tick_params(axis='both', labelsize=16)
 ax.grid(True, axis='y')
 ax.legend(fontsize=16)
@@ -209,7 +209,7 @@ from matplotlib.patches import Patch
 
 legend_elements = [
     Patch(facecolor='royalblue', edgecolor='black', label='Start Platoons'),
-    Patch(facecolor='salmon', edgecolor='black', label='Hub Platoons')
+    Patch(facecolor='salmon', edgecolor='black', label='Transit Platoons')
 ]
 
 ax.legend(handles=legend_elements, fontsize=16)

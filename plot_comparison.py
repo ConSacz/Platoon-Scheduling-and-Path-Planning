@@ -20,9 +20,9 @@ algorithm_configs = {
     'TLBO': 'TLBO'
 }
 case_configs = {
-    'N60': 'case_60',
-    'N80': 'case_80',
-    'N100': 'case_100',  
+    '60 trucks': 'case_60',
+    '80 trucks': 'case_80',
+    '100 trucks': 'case_100',  
 }
 
 results = {}
@@ -57,6 +57,7 @@ for algo_name, algo_folder in algorithm_configs.items():
             G, paths_SH, paths_HD = create_graph()
             sep_fit = sep_fitness(ind, init, ARRIVAL_TIMES, paths_SH, paths_HD, G)
             ori_fit = ori_fitness(ind, init, ARRIVAL_TIMES, paths_SH, paths_HD, G)
+            
 
             final_costs.append(final_value)
             ori_final_costs.append(ori_fit)
@@ -101,7 +102,7 @@ legend_elements = [
     for i in range(len(labels))
 ]
 
-axes[0].set_ylabel('Best Cost', fontsize=16)
+axes[0].set_ylabel('Best Cost ($)', fontsize=16)
 
 fig.legend(
     handles=legend_elements,
@@ -169,7 +170,7 @@ for idx, case in enumerate(case_configs):
     ax.tick_params(axis='both', which='major', labelsize=16)
     ax.grid(True)
 # ylabel cho cột bên trái
-axes[0].set_ylabel('Best Cost', fontsize=16)
+axes[0].set_ylabel('Best Cost ($)', fontsize=16)
 # axes[2].set_ylabel('Best Cost')
 
 handles, labels = axes[0].get_legend_handles_labels()
@@ -212,8 +213,8 @@ for idx, case in enumerate(case_configs):
     ax.tick_params(axis='both', which='major', labelsize=16)
     ax.grid(True)
     
-axes[0].set_ylabel('Fuel Cost', fontsize=16)
-axes[1].set_xlabel('Wait Cost', fontsize=16)
+axes[0].set_ylabel('Fuel Cost ($)', fontsize=16)
+axes[1].set_xlabel('Wait Cost ($)', fontsize=16)
 handles, labels = axes[0].get_legend_handles_labels()
 fig.legend(handles, labels, loc='upper center', ncol=3, bbox_to_anchor=(0.5, 1.07),fontsize=16)
 plt.tight_layout(rect=[0, 0, 1, 0.95])
@@ -339,7 +340,7 @@ for i in range(len(case_configs)):
 
 ax.set_xticks(x)
 ax.set_xticklabels(case_configs)
-ax.set_ylabel('Cost', fontsize=16)
+ax.set_ylabel('Total Cost ($)', fontsize=16)
 ax.tick_params(axis='both', labelsize=16)
 ax.grid(True, axis='y')
 ax.legend(fontsize=16)
@@ -477,7 +478,7 @@ from utils.platoon_functions import decode, get_platoons
 from utils.graph_functions import create_graph
 
 G, paths_SH, paths_HD = create_graph()
-cases = ['N60', 'N80', 'N100']
+cases = ['60 trucks', '80 trucks', '100 trucks']
 start_data = []
 hub_data = []
 
@@ -530,7 +531,7 @@ from matplotlib.patches import Patch
 
 legend_elements = [
     Patch(facecolor='royalblue', edgecolor='black', label='Start Platoons'),
-    Patch(facecolor='salmon', edgecolor='black', label='Hub Platoons')
+    Patch(facecolor='salmon', edgecolor='black', label='Transit Platoons')
 ]
 
 ax.legend(handles=legend_elements, fontsize=16)
@@ -548,7 +549,7 @@ from utils.graph_functions import create_graph
 
 G, paths_SH, paths_HD = create_graph()
 
-cases = ['N60', 'N80', 'N100']
+cases = ['60 trucks', '80 trucks', '100 trucks']
 
 fig, axes = plt.subplots(1, 3, figsize=(18, 6))
 
